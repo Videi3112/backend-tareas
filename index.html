@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestor de Tareas Seguro (JWT)</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 30px; background-color: #f4f4f9; }
+        .card { max-width: 450px; background: white; padding: 20px; margin: 20px auto; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        input, select, button { margin: 8px 0; padding: 10px; width: 100%; box-sizing: border-box; }
+        button { background-color: #007bff; color: white; border: none; cursor: pointer; border-radius: 4px; }
+        button:hover { background-color: #0056b3; }
+        .oculto { display: none; }
+        ul { list-style: none; padding: 0; }
+        li { background: #eee; margin: 8px 0; padding: 10px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; }
+    </style>
+</head>
+<body>
+
+    <div id="vistaAuth" class="card">
+        <h2>Acceso al Sistema (JWT)</h2>
+        <input type="email" id="email" placeholder="Correo electrónico">
+        <input type="password" id="password" placeholder="Contraseña">
+        <button id="btnLogin">Iniciar Sesión</button>
+        <button id="btnRegistro" style="background-color: #28a745;">Registrarse</button>
+        <p id="mensajeAuth" style="color: red; font-size: 14px;"></p>
+    </div>
+
+    <div id="vistaApp" class="card oculto">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <strong id="usuarioEmail"></strong>
+            <button id="btnLogout" style="width: auto; background: #6c757d;">Salir</button>
+        </div>
+        <hr>
+        <h3>Mis Tareas Protegidas</h3>
+        <input type="text" id="tituloTarea" placeholder="Nueva tarea...">
+        <select id="prioridadTarea">
+            <option value="Alta">Alta</option>
+            <option value="Media">Media</option>
+            <option value="Baja">Baja</option>
+        </select>
+        <button id="btnAgregar">Agregar Tarea</button>
+
+        <ul id="listaUI"></ul>
+    </div>
+
+    <script>
+        // REEMPLAZA ESTA URL POR LA TUYA EXACTA DE RENDER
+        const API = "https://backend-tareas-u69h.onrender.com/api";
+
+        const vistaAuth = document.getElementById("vistaAuth");
+        const vistaApp = document.getElementById("vistaApp");
+        const emailInput = document.getElementById("email");
+        const passInput = document.getElementById("password");
+        const mensajeAuth = document.getElementById("mensajeAuth");
+
+        document.addEventListener("DOMContentLoaded", () => {
+            const token = localStorage.getItem("token");
+            const emailGuardado = localStorage.getItem("emailUsuario");
+            if (token && emailGuardado) {
+                mostrarApp(emailGuardado);
+            }
+        });
+
+        document.getElementById("btnRegistro").addEventListener("click", async () => {
+            const res = await fetch(`${API}/registro`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ email: emailInput.value, password: passInput.value })
+            });
+            const data = await res.json();
+            if (res.ok) alert("Registrado exitosamente. Inicia sesión.");
+            else mensajeAuth.textContent = data.error;
+        });
+
+        document.getElementById("btnLogin").addEventListener("click", async () => {
+            const res = await fetch(`${API}/login`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ email: emailInput.value, password: passInput.value })
+            });
+            const data = await res.json();
+            if (res.ok) {
+                localStorage.setItem("token", data.token);
+                localStorage.setItem("emailUsuario", data.usuario.email);
+                mostrarApp(data.usuario.email);
+            } else {
+                mensajeAuth.textContent = data.error;
+            }
+        });
+
+        document.getElementById("btnLogout").addEventListener("click", () => {
+            localStorage.removeItem("token");
+            localStorage.removeItem("emailUsuario");
+            vistaApp.classList.add("oculto");
+            vistaAuth.classList.remove("oculto");
+        });
+
+        function mostrarApp(email) {
+            vistaAuth.classList.add("oculto");
+            vistaApp.classList.remove("oculto");
+            document.getElementById("usuarioEmail").textContent = email;
+            obtenerTareas();
+        }
+
+        async function obtenerTareas() {
+            const token = localStorage.getItem("token");
+            const res = await fetch(`${API}/tareas`, {
+                headers: { "Authorization": `Bearer ${token}` }
+            });
+
+            if (res.status === 401 || res.status === 403) {
+                alert("Sesión expirada o inválida.");
+                document.getElementById("btnLogout").click();
+                return;
+            }
+
+            const tareas = await res.json();
+            const lista = document.getElementById("listaUI");
+            lista.innerHTML = "";
+            tareas.forEach(t => {
+                const li = document.createElement("li");
+                li.innerHTML = `
+                    <span><strong>${t.titulo}</strong> (${t.prioridad})</span>
+                    <button onclick="eliminarTarea(${t.id})" style="width:auto; background:#dc3545;">X</button>
+                `;
+                lista.appendChild(li);
+            });
+        }
+
+        document.getElementById("btnAgregar").addEventListener("click", async () => {
+            const titulo = document.getElementById("tituloTarea").value;
+            const prioridad = document.getElementById("prioridadTarea").value;
+            const token = localStorage.getItem("token");
+
+            if (!titulo) return;
+
+            await fetch(`${API}/tareas`, {
+                method: "POST",
+                headers: { 
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${token}`
+                },
+                body: JSON.stringify({ titulo, prioridad })
+            });
+            document.getElementById("tituloTarea").value = "";
+            obtenerTareas();
+        });
+
+        async function eliminarTarea(id) {
+            const token = localStorage.getItem("token");
+            await fetch(`${API}/tareas/${id}`, { 
+                method: "DELETE",
+                headers: { "Authorization": `Bearer ${token}` }
+            });
+            obtenerTareas();
+        }
+    </script>
+</body>
+</html>
